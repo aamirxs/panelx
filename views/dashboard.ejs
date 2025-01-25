@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ubuntu Web Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">
+    <style>
+        .dark {
+            color-scheme: dark;
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Smooth transitions */
+        .transition-all {
+            transition: all 0.3s ease;
+        }
+
+        /* Card hover effects */
+        .hover-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .hover-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px -2px rgba(0, 0, 0, 0.1), 0 4px 8px -2px rgba(0, 0, 0, 0.06);
+        }
+
+        /* Glassmorphism */
+        .glass {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        }
+
+        .dark .glass {
+            background: rgba(17, 24, 39, 0.8);
+        }
+
+        /* Loading animation */
+        .loading {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .loading::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 3px;
+            bottom: 0;
+            left: 0;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6);
+            background-size: 200% 100%;
+            animation: loading 2s infinite;
+        }
+        
+        @keyframes loading {
+            0% { background-position: 100% 50%; }
+            100% { background-position: -100% 50%; }
+        }
+
+        /* Pulse animation for status indicators */
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+        }
+
+        /* Button hover effects */
+        .btn-hover {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .btn-hover::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s ease, height 0.6s ease;
+        }
+
+        .btn-hover:hover::before {
+            width: 300%;
+            height: 300%;
+        }
+
+        /* Gradient text */
+        .gradient-text {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-all" x-data="{ darkMode: false }">
+    <!-- Theme Toggle -->
+    <button id="themeToggle" class="fixed top-4 right-4 z-50 p-2 rounded-full bg-gray-200 dark:bg-gray-700 transition-all">
+        <i class="fas fa-sun text-yellow-500 dark:hidden"></i>
+        <i class="fas fa-moon text-blue-300 hidden dark:block"></i>
+    </button>
+
+    <!-- Login Modal with Glassmorphism -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="glass p-8 rounded-lg w-96 transform transition-all" data-aos="zoom-in">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Welcome Back</h2>
+            <form id="loginForm" class="space-y-4">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+                    <div class="relative">
+                        <i class="fas fa-user absolute left-3 top-3 text-gray-400"></i>
+                        <input type="text" name="username" 
+                            class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                            required>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+                    <div class="relative">
+                        <i class="fas fa-lock absolute left-3 top-3 text-gray-400"></i>
+                        <input type="password" name="password" 
+                            class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                            required>
+                    </div>
+                </div>
+                <button type="submit" 
+                    class="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all">
+                    Sign In
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="min-h-screen flex">
+        <!-- Sidebar with Glassmorphism -->
+        <div class="glass w-64 flex flex-col dark:text-white">
+            <div class="p-6">
+                <h1 class="text-2xl font-bold gradient-text">
+                    Ubuntu Panel
+                </h1>
+            </div>
+            <nav class="flex-1">
+                <div class="px-4 py-2 space-y-2">
+                    <button onclick="showSection('dashboard')" 
+                        class="btn-hover w-full text-left py-3 px-4 rounded-lg hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all flex items-center space-x-3">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Dashboard</span>
+                    </button>
+                    <button onclick="showSection('fileManager')" 
+                        class="btn-hover w-full text-left py-3 px-4 rounded-lg hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all flex items-center space-x-3">
+                        <i class="fas fa-folder"></i>
+                        <span>File Manager</span>
+                    </button>
+                    <button onclick="showSection('processes')" 
+                        class="btn-hover w-full text-left py-3 px-4 rounded-lg hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all flex items-center space-x-3">
+                        <i class="fas fa-microchip"></i>
+                        <span>Processes</span>
+                    </button>
+                    <button onclick="showSection('backup')" 
+                        class="btn-hover w-full text-left py-3 px-4 rounded-lg hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all flex items-center space-x-3">
+                        <i class="fas fa-archive"></i>
+                        <span>Backup</span>
+                    </button>
+                    <button onclick="showSection('deployment')" 
+                        class="btn-hover w-full text-left py-3 px-4 rounded-lg hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all flex items-center space-x-3">
+                        <i class="fas fa-rocket"></i>
+                        <span>Deployment</span>
+                    </button>
+                    <button onclick="showSection('terminal')" 
+                        class="btn-hover w-full text-left py-3 px-4 rounded-lg hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all flex items-center space-x-3">
+                        <i class="fas fa-terminal"></i>
+                        <span>Terminal</span>
+                    </button>
+                    <button onclick="showSection('logs')" 
+                        class="btn-hover w-full text-left py-3 px-4 rounded-lg hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all flex items-center space-x-3">
+                        <i class="fas fa-list"></i>
+                        <span>Logs</span>
+                    </button>
+                    <button onclick="showSection('settings')" 
+                        class="btn-hover w-full text-left py-3 px-4 rounded-lg hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all flex items-center space-x-3">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </button>
+                </div>
+            </nav>
+            <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+                <div class="text-sm space-y-2">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-clock text-blue-500"></i>
+                        <span id="serverTime"></span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-signal text-green-500 pulse"></i>
+                        <span id="status">System Online</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-900">
+            <!-- Dashboard Section -->
+            <div id="dashboard" class="section h-full p-6 space-y-6" data-aos="fade-up">
+                <h2 class="text-3xl font-bold gradient-text mb-6">System Overview</h2>
+                
+                <!-- Quick Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- System Stats Cards -->
+                    <div class="hover-card glass p-6 rounded-xl">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">CPU Usage</p>
+                                <h3 class="text-2xl font-bold text-gray-800 dark:text-white" id="cpuUsage">0%</h3>
+                            </div>
+                            <div class="text-blue-500">
+                                <i class="fas fa-microchip text-2xl"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
+                                <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all" style="width: 0%" id="cpuBar"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hover-card glass p-6 rounded-xl">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Memory Usage</p>
+                                <h3 class="text-2xl font-bold text-gray-800 dark:text-white" id="memoryUsage">0%</h3>
+                            </div>
+                            <div class="text-blue-500">
+                                <i class="fas fa-memory text-2xl"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
+                                <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all" style="width: 0%" id="memoryBar"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hover-card glass p-6 rounded-xl">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Disk Usage</p>
+                                <h3 class="text-2xl font-bold text-gray-800 dark:text-white" id="diskUsage">0%</h3>
+                            </div>
+                            <div class="text-blue-500">
+                                <i class="fas fa-hdd text-2xl"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
+                                <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all" style="width: 0%" id="diskBar"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hover-card glass p-6 rounded-xl">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Network Usage</p>
+                                <h3 class="text-2xl font-bold text-gray-800 dark:text-white" id="networkUsage">0%</h3>
+                            </div>
+                            <div class="text-blue-500">
+                                <i class="fas fa-wifi text-2xl"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
+                                <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all" style="width: 0%" id="networkBar"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="hover-card bg-white dark:bg-gray-800 rounded-lg shadow p-6" data-aos="fade-up" data-aos-delay="100">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">CPU History</h3>
+                        <canvas id="cpuChart"></canvas>
+                    </div>
+                    <div class="hover-card bg-white dark:bg-gray-800 rounded-lg shadow p-6" data-aos="fade-up" data-aos-delay="200">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Memory History</h3>
+                        <canvas id="memoryChart"></canvas>
+                    </div>
+                    <div class="hover-card bg-white dark:bg-gray-800 rounded-lg shadow p-6" data-aos="fade-up" data-aos-delay="300">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Disk History</h3>
+                        <canvas id="diskChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Manager Section -->
+            <div id="fileManager" class="section bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6 hidden">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 dark:text-white">File Manager</h2>
+                <div class="mb-4">
+                    <form id="uploadForm" class="flex gap-4">
+                        <input type="file" class="flex-1 p-2 border rounded" id="fileInput">
+                        <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Upload</button>
+                    </form>
+                </div>
+                <div id="fileList" class="border rounded p-4">
+                    <!-- Files will be listed here -->
+                </div>
+            </div>
+
+            <!-- Deployment Section -->
+            <div id="deployment" class="section bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6 hidden">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Deploy Application</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block mb-2 text-gray-700 dark:text-gray-300">Select Python File</label>
+                        <select id="pythonFileSelect" class="w-full p-2 border rounded">
+                            <!-- Python files will be listed here -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block mb-2 text-gray-700 dark:text-gray-300">Port</label>
+                        <input type="number" id="portInput" class="w-full p-2 border rounded" value="5000">
+                    </div>
+                    <button onclick="deployApplication()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                        Deploy
+                    </button>
+                </div>
+                <div id="deploymentStatus" class="mt-4">
+                    <!-- Deployment status will be shown here -->
+                </div>
+            </div>
+
+            <!-- Process Management Section -->
+            <div id="processes" class="section hidden h-full p-6">
+                <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Process Management</h2>
+                <div class="grid grid-cols-1 gap-6">
+                    <!-- Process List -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-semibold text-gray-800 dark:text-white">Running Processes</h3>
+                            <button onclick="refreshProcesses()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                                <i class="fas fa-sync-alt mr-2"></i>Refresh
+                            </button>
+                        </div>
+                        <div id="processList" class="space-y-2">
+                            <!-- Process items will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- New Process Form -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Start New Process</h3>
+                        <form id="newProcessForm" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">Script Path</label>
+                                <input type="text" name="script" class="w-full p-2 border rounded" required>
+                            </div>
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">Process Name</label>
+                                <input type="text" name="name" class="w-full p-2 border rounded" required>
+                            </div>
+                            <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                                Start Process
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backup Section -->
+            <div id="backup" class="section hidden h-full p-6">
+                <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Backup Management</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Manual Backup -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Create Backup</h3>
+                        <form id="backupForm" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">Directory to Backup</label>
+                                <input type="text" name="directory" class="w-full p-2 border rounded" required>
+                            </div>
+                            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                                Create Backup
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Scheduled Backups -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Schedule Backup</h3>
+                        <form id="scheduleBackupForm" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">Directory</label>
+                                <input type="text" name="directory" class="w-full p-2 border rounded" required>
+                            </div>
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">Schedule (Cron Expression)</label>
+                                <input type="text" name="schedule" class="w-full p-2 border rounded" 
+                                    placeholder="0 0 * * *" required>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Example: "0 0 * * *" for daily at midnight</p>
+                            </div>
+                            <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                                Schedule Backup
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Backup History -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 md:col-span-2">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Backup History</h3>
+                        <div id="backupHistory" class="space-y-2">
+                            <!-- Backup history will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminal Section -->
+            <div id="terminal" class="section hidden h-full">
+                <div id="terminal-container" class="h-full bg-black p-4"></div>
+            </div>
+
+            <!-- Logs Section -->
+            <div id="logs" class="section bg-white dark:bg-gray-800 rounded-lg shadow p-6 hidden">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Live Logs</h2>
+                <div id="logOutput" class="bg-black text-green-400 p-4 rounded h-96 overflow-auto font-mono">
+                    <!-- Logs will appear here -->
+                </div>
+            </div>
+
+            <!-- Settings Section -->
+            <div id="settings" class="section hidden h-full p-6">
+                <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Settings</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Email Settings -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Email Notifications</h3>
+                        <form id="emailSettingsForm" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">SMTP Host</label>
+                                <input type="text" name="smtp_host" class="w-full p-2 border rounded">
+                            </div>
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">SMTP Port</label>
+                                <input type="number" name="smtp_port" class="w-full p-2 border rounded">
+                            </div>
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">SMTP User</label>
+                                <input type="email" name="smtp_user" class="w-full p-2 border rounded">
+                            </div>
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">SMTP Password</label>
+                                <input type="password" name="smtp_pass" class="w-full p-2 border rounded">
+                            </div>
+                            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                                Save Email Settings
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Security Settings -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Security Settings</h3>
+                        <form id="securitySettingsForm" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-gray-700 dark:text-gray-300">Change Password</label>
+                                <input type="password" name="current_password" placeholder="Current Password" 
+                                    class="w-full p-2 border rounded mb-2">
+                                <input type="password" name="new_password" placeholder="New Password" 
+                                    class="w-full p-2 border rounded mb-2">
+                                <input type="password" name="confirm_password" placeholder="Confirm New Password" 
+                                    class="w-full p-2 border rounded">
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="checkbox" name="two_factor" id="two_factor">
+                                <label for="two_factor">Enable Two-Factor Authentication</label>
+                            </div>
+                            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                                Update Security Settings
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentPath = './';
+        let term;
+
+        // Initialize Terminal
+        function initializeTerminal() {
+            term = new Terminal({
+                cursorBlink: true,
+                theme: {
+                    background: '#000000',
+                    foreground: '#ffffff'
+                }
+            });
+            const fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+            
+            term.open(document.getElementById('terminal-container'));
+            fitAddon.fit();
+
+            term.onData(data => {
+                socket.emit('terminal.input', data);
+            });
+
+            socket.on('terminal.data', data => {
+                term.write(data);
+            });
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+            });
+        }
+
+        // Initialize Charts
+        const cpuChart = new Chart(document.getElementById('cpuChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Usage %',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        const memoryChart = new Chart(document.getElementById('memoryChart').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Used', 'Free'],
+                datasets: [{
+                    data: [0, 0],
+                    backgroundColor: ['rgb(255, 99, 132)', 'rgb(75, 192, 192)']
+                }]
+            }
+        });
+
+        const diskChart = new Chart(document.getElementById('diskChart').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Used', 'Free'],
+                datasets: [{
+                    data: [0, 0],
+                    backgroundColor: ['rgb(255, 159, 64)', 'rgb(75, 192, 192)']
+                }]
+            }
+        });
+
+        // Update System Info
+        socket.on('system.info', (info) => {
+            // Update CPU Chart
+            const time = new Date().toLocaleTimeString();
+            cpuChart.data.labels.push(time);
+            cpuChart.data.datasets[0].data.push(info.cpu);
+            if (cpuChart.data.labels.length > 10) {
+                cpuChart.data.labels.shift();
+                cpuChart.data.datasets[0].data.shift();
+            }
+            cpuChart.update();
+
+            // Update Memory Chart
+            memoryChart.data.datasets[0].data = [
+                info.memory.used,
+                info.memory.free
+            ];
+            memoryChart.update();
+
+            // Update Disk Chart
+            if (info.disk) {
+                diskChart.data.datasets[0].data = [
+                    info.disk.used,
+                    info.disk.free
+                ];
+                diskChart.update();
+            }
+
+            // Update CPU Bar
+            document.getElementById('cpuBar').style.width = `${info.cpu}%`;
+
+            // Update Memory Bar
+            document.getElementById('memoryBar').style.width = `${info.memory.used / (info.memory.used + info.memory.free) * 100}%`;
+
+            // Update Disk Bar
+            if (info.disk) {
+                document.getElementById('diskBar').style.width = `${info.disk.used / (info.disk.used + info.disk.free) * 100}%`;
+            }
+
+            // Update CPU Usage Text
+            document.getElementById('cpuUsage').textContent = `${info.cpu}%`;
+
+            // Update Memory Usage Text
+            document.getElementById('memoryUsage').textContent = `${(info.memory.used / (info.memory.used + info.memory.free) * 100).toFixed(2)}%`;
+
+            // Update Disk Usage Text
+            if (info.disk) {
+                document.getElementById('diskUsage').textContent = `${(info.disk.used / (info.disk.used + info.disk.free) * 100).toFixed(2)}%`;
+            }
+
+            // Update Network Usage Text
+            document.getElementById('networkUsage').textContent = `${info.network}%`;
+        });
+
+        // Section Navigation
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.add('hidden');
+            });
+            document.getElementById(sectionId).classList.remove('hidden');
+
+            if (sectionId === 'terminal' && !term) {
+                initializeTerminal();
+            }
+        }
+
+        // File Manager
+        async function loadFiles() {
+            const response = await fetch(`/api/files?path=${encodeURIComponent(currentPath)}`);
+            const files = await response.json();
+            const fileList = document.getElementById('fileList');
+            
+            fileList.innerHTML = files.map(file => `
+                <div class="flex justify-between items-center p-2 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <span>${file.name}</span>
+                    <div>
+                        ${file.isDirectory 
+                            ? `<button onclick="navigateDirectory('${file.name}')" class="text-blue-500 dark:text-blue-300">Open</button>`
+                            : `<button onclick="downloadFile('${file.name}')" class="text-green-500 dark:text-green-300">Download</button>`
+                        }
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // File Upload
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('file', document.getElementById('fileInput').files[0]);
+            
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                alert(result.message);
+                loadFiles();
+            } catch (error) {
+                alert('Upload failed: ' + error.message);
+            }
+        });
+
+        // Deployment
+        async function deployApplication() {
+            const file = document.getElementById('pythonFileSelect').value;
+            const port = document.getElementById('portInput').value;
+
+            try {
+                const response = await fetch('/api/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ file, port })
+                });
+                const result = await response.json();
+                document.getElementById('deploymentStatus').innerHTML = `
+                    <div class="text-green-500 dark:text-green-300">
+                        Deployed successfully! Process ID: ${result.processId}
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('deploymentStatus').innerHTML = `
+                    <div class="text-red-500 dark:text-red-300">
+                        Deployment failed: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Process Management
+        async function refreshProcesses() {
+            try {
+                const response = await fetch('/api/processes');
+                const processes = await response.json();
+                const processList = document.getElementById('processList');
+                
+                processList.innerHTML = processes.map(proc => `
+                    <div class="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-700 rounded">
+                        <div>
+                            <div class="font-semibold">${proc.name}</div>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">PID: ${proc.pid}</div>
+                        </div>
+                        <div class="space-x-2">
+                            <button onclick="monitorProcess('${proc.pid}')" 
+                                class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+                                Monitor
+                            </button>
+                            <button onclick="stopProcess('${proc.name}')"
+                                class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
+                                Stop
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error refreshing processes:', error);
+            }
+        }
+
+        // Backup System
+        document.getElementById('backupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const directory = e.target.directory.value;
+
+            try {
+                const response = await fetch('/api/backup/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ directory })
+                });
+                const result = await response.json();
+                alert('Backup created: ' + result.path);
+            } catch (error) {
+                alert('Backup failed: ' + error.message);
+            }
+        });
+
+        document.getElementById('scheduleBackupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                directory: e.target.directory.value,
+                schedule: e.target.schedule.value
+            };
+
+            try {
+                const response = await fetch('/api/backup/schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert('Backup scheduled successfully');
+            } catch (error) {
+                alert('Failed to schedule backup: ' + error.message);
+            }
+        });
+
+        // Authentication
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = {
+                username: formData.get('username'),
+                password: formData.get('password')
+            };
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    localStorage.setItem('token', result.token);
+                    document.getElementById('loginModal').classList.add('hidden');
+                    loadDashboard();
+                } else {
+                    alert('Login failed: ' + result.error);
+                }
+            } catch (error) {
+                alert('Login failed: ' + error.message);
+            }
+        });
+
+        // Check authentication on load
+        function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                document.getElementById('loginModal').classList.remove('hidden');
+            }
+        }
+
+        // Logs
+        socket.on('log', ({ processId, data }) => {
+            const logOutput = document.getElementById('logOutput');
+            logOutput.innerHTML += `<div>${data}</div>`;
+            logOutput.scrollTop = logOutput.scrollHeight;
+        });
+
+        socket.on('error', ({ processId, data }) => {
+            const logOutput = document.getElementById('logOutput');
+            logOutput.innerHTML += `<div class="text-red-500">${data}</div>`;
+            logOutput.scrollTop = logOutput.scrollHeight;
+        });
+
+        // Initial load
+        checkAuth();
+        showSection('dashboard');
+        loadFiles();
+
+        // Update server time
+        setInterval(() => {
+            document.getElementById('serverTime').textContent = new Date().toLocaleString();
+        }, 1000);
+    </script>
+</body>
+</html>
